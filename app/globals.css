@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* React Big Calendar custom styles */
+.rbc-calendar {
+  font-family: inherit;
+}
+
+.rbc-event {
+  border-radius: 4px;
+  border: none;
+  padding: 2px 6px;
+}
+
+.rbc-event.rbc-event-pending {
+  background-color: #fbbf24;
+}
+
+.rbc-event.rbc-event-approved {
+  background-color: #10b981;
+}
+
+.rbc-event.rbc-event-completed {
+  background-color: #6b7280;
+}
+
+.rbc-toolbar {
+  margin-bottom: 1rem;
+}
+
+.rbc-btn-group > button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+}
+
+.rbc-btn-group > button:hover {
+  background: #f3f4f6;
+}
+
+.rbc-btn-group > button.rbc-active {
+  background: #3b82f6;
+  color: white;
+}
