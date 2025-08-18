@@ -9,10 +9,36 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
     checkin_date: '',
     special_notes: ''
   })
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    onSubmit(formData)
+    
+    // Validate required fields
+    if (!formData.property_id || !formData.checkout_date) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    setLoading(true)
+    try {
+      // Clean the data before submitting
+      const cleanData = {
+        property_id: formData.property_id,
+        checkout_date: formData.checkout_date,
+        checkout_time: formData.checkout_time || null,
+        checkin_date: formData.checkin_date || null,
+        special_notes: formData.special_notes || null,
+        status: 'pending' // Ensure status is set
+      }
+
+      await onSubmit(cleanData)
+    } catch (error) {
+      console.error('Error submitting form:', error)
+      alert('Failed to create cleaning request. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Get tomorrow's date as minimum checkout date
@@ -29,6 +55,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
+              type="button"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -46,6 +73,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
                 onChange={(e) => setFormData({...formData, property_id: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={loading}
               >
                 <option value="">Select a property</option>
                 {properties.map((property) => (
@@ -68,6 +96,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   min={minDate}
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -80,7 +109,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
                   value={formData.checkout_time}
                   onChange={(e) => setFormData({...formData, checkout_time: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Optional"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -95,6 +124,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
                 onChange={(e) => setFormData({...formData, checkin_date: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min={formData.checkout_date || minDate}
+                disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1">When is the next guest checking in?</p>
             </div>
@@ -109,6 +139,7 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows="3"
                 placeholder="Any special instructions for this cleaning (extra attention needed, specific areas, etc.)"
+                disabled={loading}
               />
             </div>
 
@@ -125,14 +156,23 @@ export default function CreateRequestForm({ user, properties, selectedProperty, 
             <div className="flex space-x-3 pt-4">
               <button
                 type="submit"
-                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
+                disabled={loading || !formData.property_id || !formData.checkout_date}
+                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Send Request to Cleaners
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Creating...
+                  </div>
+                ) : (
+                  'Send Request to Cleaners'
+                )}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                disabled={loading}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
