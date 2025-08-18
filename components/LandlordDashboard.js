@@ -12,9 +12,9 @@ export default function LandlordDashboard({ user }) {
   const [showAddProperty, setShowAddProperty] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState(null)
 
-  // Real-time data
-  const { data: properties, loading: propertiesLoading, refresh: refreshProperties } = useRealtime('properties', user.id, 'landlord')
-  const { data: requests, loading: requestsLoading, refresh: refreshRequests } = useRealtime('cleaning_requests', user.id, 'landlord')
+  // Real-time data with improved hooks
+  const { data: properties, loading: propertiesLoading, refresh: refreshProperties, deleteItem: deleteProperty } = useRealtime('properties', user.id, 'landlord')
+  const { data: requests, loading: requestsLoading, refresh: refreshRequests, deleteItem: deleteRequest, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'landlord')
   const { data: messages, loading: messagesLoading } = useRealtime('messages', user.id, 'landlord')
 
   // Stats calculations
@@ -32,7 +32,7 @@ export default function LandlordDashboard({ user }) {
 
   const addProperty = async (propertyData) => {
     try {
-      const promise = supabase
+      const { data, error } = await supabase
         .from('properties')
         .insert([{
           landlord_id: user.id,
@@ -40,22 +40,48 @@ export default function LandlordDashboard({ user }) {
         }])
         .select()
 
-      await notify.promise(promise, {
-        loading: 'Adding property...',
-        success: 'Property added successfully!',
-        error: 'Failed to add property'
-      })
+      if (error) throw error
 
+      notify.success('Property added successfully!')
       setShowAddProperty(false)
       refreshProperties()
     } catch (error) {
       console.error('Error adding property:', error)
+      notify.error('Failed to add property')
+    }
+  }
+
+  const handleDeleteProperty = async (propertyId) => {
+    if (!confirm('Are you sure you want to delete this property? This will also cancel any pending cleaning requests for this property.')) {
+      return
+    }
+
+    try {
+      // First cancel any pending requests for this property
+      const { error: requestError } = await supabase
+        .from('cleaning_requests')
+        .update({ status: 'cancelled' })
+        .eq('property_id', propertyId)
+        .eq('status', 'pending')
+
+      if (requestError) throw requestError
+
+      // Then delete the property
+      const result = await deleteProperty(propertyId)
+      if (result.success) {
+        notify.success('Property deleted successfully!')
+      } else {
+        throw result.error
+      }
+    } catch (error) {
+      console.error('Error deleting property:', error)
+      notify.error('Failed to delete property')
     }
   }
 
   const createCleaningRequest = async (requestData) => {
     try {
-      const promise = supabase
+      const { data, error } = await supabase
         .from('cleaning_requests')
         .insert([{
           landlord_id: user.id,
@@ -63,16 +89,32 @@ export default function LandlordDashboard({ user }) {
         }])
         .select()
 
-      await notify.promise(promise, {
-        loading: 'Sending cleaning request...',
-        success: 'Cleaning request sent to cleaners!',
-        error: 'Failed to create request'
-      })
+      if (error) throw error
 
+      notify.success('Cleaning request sent to cleaners!')
       setShowCreateRequest(false)
       refreshRequests()
     } catch (error) {
       console.error('Error creating request:', error)
+      notify.error('Failed to create request')
+    }
+  }
+
+  const handleCancelRequest = async (requestId) => {
+    if (!confirm('Are you sure you want to cancel this cleaning request?')) {
+      return
+    }
+
+    try {
+      const result = await updateRequest(requestId, { status: 'cancelled' })
+      if (result.success) {
+        notify.success('Cleaning request cancelled!')
+      } else {
+        throw result.error
+      }
+    } catch (error) {
+      console.error('Error cancelling request:', error)
+      notify.error('Failed to cancel request')
     }
   }
 
@@ -183,6 +225,7 @@ export default function LandlordDashboard({ user }) {
               showAddProperty={showAddProperty}
               setShowAddProperty={setShowAddProperty}
               addProperty={addProperty}
+              onDeleteProperty={handleDeleteProperty}
               loading={propertiesLoading}
               onRequestCleaning={(property) => {
                 setSelectedProperty(property)
@@ -196,6 +239,7 @@ export default function LandlordDashboard({ user }) {
               properties={properties}
               loading={requestsLoading}
               onCreateRequest={() => setShowCreateRequest(true)}
+              onCancelRequest={handleCancelRequest}
             />
           )}
           {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
@@ -274,7 +318,7 @@ function OverviewTab({ stats, properties, requests }) {
 }
 
 // Properties Tab Component
-function PropertiesTab({ properties, showAddProperty, setShowAddProperty, addProperty, loading, onRequestCleaning }) {
+function PropertiesTab({ properties, showAddProperty, setShowAddProperty, addProperty, onDeleteProperty, loading, onRequestCleaning }) {
   if (loading) {
     return <div className="text-center py-8">Loading properties...</div>
   }
@@ -319,13 +363,19 @@ function PropertiesTab({ properties, showAddProperty, setShowAddProperty, addPro
               {property.special_instructions && (
                 <p className="text-sm text-gray-500 mb-4 italic">"{property.special_instructions}"</p>
               )}
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2">
                 <button className="text-blue-600 hover:underline text-sm">Edit</button>
                 <button 
                   onClick={() => onRequestCleaning(property)}
                   className="text-green-600 hover:underline text-sm"
                 >
                   Request Cleaning
+                </button>
+                <button
+                  onClick={() => onDeleteProperty(property.id)}
+                  className="text-red-600 hover:underline text-sm"
+                >
+                  Delete
                 </button>
               </div>
             </div>
@@ -470,7 +520,7 @@ function AddPropertyForm({ onSubmit, onCancel }) {
 }
 
 // Requests Tab Component
-function RequestsTab({ requests, properties, loading, onCreateRequest }) {
+function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelRequest }) {
   const [statusFilter, setStatusFilter] = useState('all')
 
   const filteredRequests = requests.filter(request => 
@@ -495,7 +545,7 @@ function RequestsTab({ requests, properties, loading, onCreateRequest }) {
 
       {/* Status Filter */}
       <div className="flex space-x-2">
-        {['all', 'pending', 'approved', 'completed'].map(status => (
+        {['all', 'pending', 'approved', 'completed', 'cancelled'].map(status => (
           <button
             key={status}
             onClick={() => setStatusFilter(status)}
@@ -515,77 +565,4 @@ function RequestsTab({ requests, properties, loading, onCreateRequest }) {
 
       {filteredRequests.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="text-4xl mb-4">🧹</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {statusFilter === 'all' ? 'No cleaning requests yet' : `No ${statusFilter} requests`}
-          </h3>
-          <p className="text-gray-600 mb-4">
-            {properties.length === 0 
-              ? 'Add a property first, then create your first cleaning request'
-              : 'Create your first cleaning request for a property'
-            }
-          </p>
-          <button
-            onClick={onCreateRequest}
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Create Cleaning Request
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredRequests.map((request) => (
-            <div key={request.id} className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">
-                    {request.properties?.property_name || 'Property'}
-                  </h3>
-                  <p className="text-gray-600">{request.properties?.address}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                  {request.status}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    <strong>Checkout:</strong> {formatDate(request.checkout_date)} at {formatTime(request.checkout_time)}
-                  </p>
-                  {request.checkin_date && (
-                    <p className="text-sm text-gray-600">
-                      <strong>Next Checkin:</strong> {formatDate(request.checkin_date)}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">
-                    <strong>Created:</strong> {formatDate(request.created_at)}
-                  </p>
-                </div>
-              </div>
-
-              {request.special_notes && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                  <p className="text-sm"><strong>Special Notes:</strong> {request.special_notes}</p>
-                </div>
-              )}
-
-              <div className="flex space-x-3">
-                <button className="text-blue-600 hover:underline text-sm">View Details</button>
-                {request.status === 'approved' && (
-                  <button className="text-green-600 hover:underline text-sm">Message Cleaner</button>
-                )}
-                {request.status === 'pending' && (
-                  <button className="text-red-600 hover:underline text-sm">Cancel Request</button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-// Continue with remaining components in next file...
+          <div className="
