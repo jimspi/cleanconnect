@@ -6,10 +6,6 @@ export default function RequestCard({ request, onAction }) {
   const [showPriceForm, setShowPriceForm] = useState(false)
   const [price, setPrice] = useState('')
 
-  // Debug logging
-  console.log('RequestCard received request:', request)
-  console.log('Request properties:', request.properties)
-
   const handleAccept = () => {
     if (showPriceForm && price) {
       onAction(request.id, 'accept', parseFloat(price))
@@ -24,33 +20,14 @@ export default function RequestCard({ request, onAction }) {
     onAction(request.id, 'decline')
   }
 
-  // Safely extract property information with fallbacks
-  const propertyName = request.properties?.property_name || 'Property Name Not Available'
-  const propertyAddress = request.properties?.address || 'Address Not Available'
-  const propertyInstructions = request.properties?.special_instructions
-
-  // Debug what we're actually displaying
-  console.log('Displaying property name:', propertyName)
-  console.log('Displaying property address:', propertyAddress)
-
   return (
     <div className="bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900">
-            {propertyName}
+            {request.properties?.property_name || 'Property Cleaning'}
           </h3>
-          <p className="text-gray-600">{propertyAddress}</p>
-          
-          {/* Debug info - remove this after testing */}
-          <div className="mt-2 text-xs text-red-500 border border-red-200 p-2 rounded">
-            <strong>Debug Info:</strong><br/>
-            Request ID: {request.id}<br/>
-            Property ID: {request.property_id}<br/>
-            Has Properties Object: {request.properties ? 'Yes' : 'No'}<br/>
-            Property Name: {request.properties?.property_name || 'Missing'}<br/>
-            Property Address: {request.properties?.address || 'Missing'}
-          </div>
+          <p className="text-gray-600">{request.properties?.address}</p>
         </div>
         <div className="text-right ml-4">
           <p className="font-medium text-lg">
@@ -65,10 +42,10 @@ export default function RequestCard({ request, onAction }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
           <p className="text-sm text-gray-600">
-            <strong>Landlord ID:</strong> {request.landlord_id}
+            <strong>Landlord:</strong> Landlord
           </p>
           <p className="text-sm text-gray-600">
-            <strong>Status:</strong> {request.status}
+            <strong>Contact:</strong> {request.landlord?.email || 'Available after acceptance'}
           </p>
         </div>
         <div>
@@ -83,10 +60,10 @@ export default function RequestCard({ request, onAction }) {
         </div>
       </div>
 
-      {propertyInstructions && (
+      {request.properties?.special_instructions && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
           <p className="text-sm">
-            <strong>Property Instructions:</strong> {propertyInstructions}
+            <strong>Property Instructions:</strong> {request.properties.special_instructions}
           </p>
         </div>
       )}
@@ -156,7 +133,6 @@ export default function RequestCard({ request, onAction }) {
       {showDetails && (
         <div className="mt-4 pt-4 border-t space-y-2 text-sm text-gray-600">
           <p><strong>Request ID:</strong> {request.id.slice(0, 8)}...</p>
-          <p><strong>Property ID:</strong> {request.property_id}</p>
           <p><strong>Created:</strong> {new Date(request.created_at).toLocaleString()}</p>
           {request.properties?.supply_list && Object.values(request.properties.supply_list).some(Boolean) && (
             <div>
