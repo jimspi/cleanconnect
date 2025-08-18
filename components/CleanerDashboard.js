@@ -227,22 +227,6 @@ function CleanerOverviewTab({ stats, requests }) {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Dashboard Overview</h2>
       
-      {/* Quick Actions */}
-      <div className="bg-green-50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-green-800 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="bg-green-600 text-white p-4 rounded-lg hover:bg-green-700 transition-colors">
-            📋 View New Requests
-          </button>
-          <button className="bg-blue-600 text-white p-4 rounded-lg hover:bg-blue-700 transition-colors">
-            📅 Check Schedule
-          </button>
-          <button className="bg-orange-600 text-white p-4 rounded-lg hover:bg-orange-700 transition-colors">
-            📦 Report Supplies
-          </button>
-        </div>
-      </div>
-
       {/* Recent Activity */}
       {recentActivity.length > 0 && (
         <div className="bg-white border rounded-lg">
