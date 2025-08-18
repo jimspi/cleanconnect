@@ -11,8 +11,8 @@ export default function CleanerDashboard({ user }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [showSupplyReport, setShowSupplyReport] = useState(false)
 
-  // Real-time data
-  const { data: requests, loading: requestsLoading, refresh: refreshRequests } = useRealtime('cleaning_requests', user.id, 'cleaner')
+  // Real-time data with improved hooks
+  const { data: requests, loading: requestsLoading, refresh: refreshRequests, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'cleaner')
   const { data: messages, loading: messagesLoading } = useRealtime('messages', user.id, 'cleaner')
 
   const handleRequestAction = async (requestId, action, price = null) => {
@@ -21,26 +21,41 @@ export default function CleanerDashboard({ user }) {
         ? { cleaner_id: user.id, status: 'approved', price: price }
         : { status: 'declined' }
 
-      const promise = supabase
-        .from('cleaning_requests')
-        .update(updates)
-        .eq('id', requestId)
-
-      await notify.promise(promise, {
-        loading: action === 'accept' ? 'Accepting request...' : 'Declining request...',
-        success: action === 'accept' ? 'Request accepted!' : 'Request declined',
-        error: 'Failed to update request'
-      })
-
-      refreshRequests()
+      const result = await updateRequest(requestId, updates)
+      
+      if (result.success) {
+        notify.success(action === 'accept' ? 'Request accepted!' : 'Request declined')
+      } else {
+        throw result.error
+      }
     } catch (error) {
       console.error('Error updating request:', error)
+      notify.error('Failed to update request')
+    }
+  }
+
+  const handleCompleteJob = async (requestId) => {
+    if (!confirm('Mark this cleaning job as completed?')) {
+      return
+    }
+
+    try {
+      const result = await updateRequest(requestId, { status: 'completed' })
+      
+      if (result.success) {
+        notify.success('Job marked as completed!')
+      } else {
+        throw result.error
+      }
+    } catch (error) {
+      console.error('Error completing job:', error)
+      notify.error('Failed to complete job')
     }
   }
 
   const submitSupplyReport = async (reportData) => {
     try {
-      const promise = supabase
+      const { data, error } = await supabase
         .from('supply_reports')
         .insert([{
           cleaner_id: user.id,
@@ -48,15 +63,13 @@ export default function CleanerDashboard({ user }) {
         }])
         .select()
 
-      await notify.promise(promise, {
-        loading: 'Submitting supply report...',
-        success: 'Supply report submitted!',
-        error: 'Failed to submit report'
-      })
+      if (error) throw error
 
+      notify.success('Supply report submitted!')
       setShowSupplyReport(false)
     } catch (error) {
       console.error('Error submitting supply report:', error)
+      notify.error('Failed to submit report')
     }
   }
 
@@ -182,6 +195,7 @@ export default function CleanerDashboard({ user }) {
           {activeTab === 'schedule' && (
             <ScheduleTab 
               requests={requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id)}
+              onCompleteJob={handleCompleteJob}
             />
           )}
           {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
@@ -290,7 +304,7 @@ function RequestsTab({ requests, onAction, loading }) {
 }
 
 // Schedule Tab
-function ScheduleTab({ requests }) {
+function ScheduleTab({ requests, onCompleteJob }) {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">My Schedule</h2>
@@ -321,7 +335,12 @@ function ScheduleTab({ requests }) {
               <div className="mt-3 flex space-x-3">
                 <button className="text-blue-600 hover:underline text-sm">View Details</button>
                 <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
-                <button className="text-purple-600 hover:underline text-sm">Mark Complete</button>
+                <button 
+                  onClick={() => onCompleteJob(request.id)}
+                  className="text-purple-600 hover:underline text-sm"
+                >
+                  Mark Complete
+                </button>
               </div>
             </div>
           ))}
