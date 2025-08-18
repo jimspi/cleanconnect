@@ -82,22 +82,36 @@ export default function LandlordDashboard({ user }) {
 
   const createCleaningRequest = async (requestData) => {
     try {
+      console.log('Creating cleaning request with data:', requestData) // Debug log
+
       const { data, error } = await supabase
         .from('cleaning_requests')
         .insert([{
           landlord_id: user.id,
-          ...requestData
+          property_id: requestData.property_id,
+          checkout_date: requestData.checkout_date,
+          checkout_time: requestData.checkout_time,
+          checkin_date: requestData.checkin_date,
+          special_notes: requestData.special_notes,
+          status: 'pending',
+          cleaner_id: null,
+          price: null
         }])
         .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
 
+      console.log('Successfully created request:', data) // Debug log
       notify.success('Cleaning request sent to cleaners!')
       setShowCreateRequest(false)
+      setSelectedProperty(null)
       refreshRequests()
     } catch (error) {
       console.error('Error creating request:', error)
-      notify.error('Failed to create request')
+      notify.error(`Failed to create request: ${error.message}`)
     }
   }
 
