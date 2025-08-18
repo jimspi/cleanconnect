@@ -1,4 +1,3 @@
-// Replace the entire MessageCenter component with this fixed version:
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { notify, formatDateTime } from '../utils/notifications'
