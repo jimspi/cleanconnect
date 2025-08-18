@@ -618,6 +618,23 @@ function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelR
                 </div>
               )}
 
+              {/* Show if request is getting old */}
+              {request.status === 'pending' && (
+                (() => {
+                  const hoursOld = Math.floor((new Date() - new Date(request.created_at)) / (1000 * 60 * 60))
+                  if (hoursOld > 24) {
+                    return (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                        <p className="text-sm text-orange-700">
+                          <strong>⚠️ Request is {hoursOld} hours old</strong> - Consider adjusting price or requirements if no cleaners are accepting.
+                        </p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()
+              )}
+
               <div className="flex space-x-3">
                 <button className="text-blue-600 hover:underline text-sm">View Details</button>
                 {request.status === 'approved' && request.cleaner_id && (
