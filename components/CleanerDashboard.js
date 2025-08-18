@@ -313,8 +313,6 @@ function RequestsTab({ requests, onAction, loading }) {
     return <div className="text-center py-8">Loading requests...</div>
   }
 
-  console.log('RequestsTab received requests:', requests) // Debug log
-
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">New Cleaning Requests</h2>
@@ -327,16 +325,13 @@ function RequestsTab({ requests, onAction, loading }) {
         </div>
       ) : (
         <div className="space-y-4">
-          {requests.map((request) => {
-            console.log('Rendering request:', request) // Debug log
-            return (
-              <RequestCard 
-                key={request.id} 
-                request={request} 
-                onAction={onAction}
-              />
-            )
-          })}
+          {requests.map((request) => (
+            <RequestCard 
+              key={request.id} 
+              request={request} 
+              onAction={onAction}
+            />
+          ))}
         </div>
       )}
     </div>
