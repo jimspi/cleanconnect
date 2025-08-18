@@ -20,8 +20,7 @@ export function useRealtime(table, userId, userType) {
         {
           event: '*',
           schema: 'public',
-          table: table,
-          filter: getFilter()
+          table: table
         },
         (payload) => {
           handleRealtimeUpdate(payload)
@@ -34,21 +33,6 @@ export function useRealtime(table, userId, userType) {
     }
   }, [userId, table, userType])
 
-  const getFilter = () => {
-    if (table === 'cleaning_requests') {
-      return userType === 'landlord' 
-        ? `landlord_id=eq.${userId}`
-        : `cleaner_id=eq.${userId},status=eq.pending`
-    }
-    if (table === 'messages') {
-      return `or(sender_id.eq.${userId},recipient_id.eq.${userId})`
-    }
-    if (table === 'properties') {
-      return `landlord_id=eq.${userId}`
-    }
-    return ''
-  }
-
   const loadData = async () => {
     try {
       setLoading(true)
@@ -57,9 +41,7 @@ export function useRealtime(table, userId, userType) {
       if (table === 'cleaning_requests') {
         query = query.select(`
           *,
-          properties(property_name, address, special_instructions),
-          landlord:users!landlord_id(raw_user_meta_data),
-          cleaner:users!cleaner_id(raw_user_meta_data)
+          properties(property_name, address, special_instructions)
         `)
 
         if (userType === 'landlord') {
@@ -70,13 +52,7 @@ export function useRealtime(table, userId, userType) {
       } else if (table === 'properties') {
         query = query.eq('landlord_id', userId)
       } else if (table === 'messages') {
-        query = query
-          .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
-          .select(`
-            *,
-            sender:users!sender_id(raw_user_meta_data),
-            recipient:users!recipient_id(raw_user_meta_data)
-          `)
+        query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
       }
 
       const { data, error } = await query.order('created_at', { ascending: false })
