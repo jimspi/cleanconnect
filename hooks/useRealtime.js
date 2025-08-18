@@ -1,370 +1,277 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { useRealtime } from '../hooks/useRealtime'
-import RequestCard from './RequestCard'
-import MessageCenter from './MessageCenter'
-import Calendar from './Calendar'
-import SupplyReportForm from './SupplyReportForm'
-import { notify, formatDate, getStatusColor } from '../utils/notifications'
+import toast from 'react-hot-toast'
 
-export default function CleanerDashboard({ user }) {
-  const [activeTab, setActiveTab] = useState('overview')
-  const [showSupplyReport, setShowSupplyReport] = useState(false)
-  const [declinedRequests, setDeclinedRequests] = useState(new Set())
+export function useRealtime(table, userId, userType) {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+  const channelRef = useRef(null)
 
-  // Real-time data with improved hooks
-  const { data: requests, loading: requestsLoading, refresh: refreshRequests, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'cleaner')
-  const { data: messages, loading: messagesLoading } = useRealtime('messages', user.id, 'cleaner')
+  useEffect(() => {
+    if (!userId) return
 
-  // Filter out declined requests from the UI
-  const filteredRequests = requests.filter(request => !declinedRequests.has(request.id))
+    // Initial data load
+    loadData()
 
-  const handleRequestAction = async (requestId, action, price = null) => {
+    // Clean up existing subscription
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+    }
+
+    // Set up real-time subscription with unique channel name
+    const channelName = `${table}_changes_${userId}_${Date.now()}`
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: table
+        },
+        (payload) => {
+          handleRealtimeUpdate(payload)
+        }
+      )
+      .subscribe()
+
+    channelRef.current = channel
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [userId, table, userType])
+
+  const loadData = async () => {
     try {
-      if (action === 'accept') {
-        // For accepting, assign cleaner and update status
-        const { error } = await supabase
-          .from('cleaning_requests')
-          .update({ 
-            cleaner_id: user.id, 
-            status: 'approved', 
-            price: price 
-          })
-          .eq('id', requestId)
+      setLoading(true)
+      let query = supabase.from(table).select('*')
 
+      if (table === 'cleaning_requests') {
+        // Load cleaning requests with properties data
+        if (userType === 'landlord') {
+          query = query.eq('landlord_id', userId)
+        } else {
+          // For cleaners: show pending requests OR requests assigned to them
+          query = query.or(`and(status.eq.pending,cleaner_id.is.null),cleaner_id.eq.${userId}`)
+        }
+        
+        const { data: requests, error } = await query.order('created_at', { ascending: false })
         if (error) throw error
-        notify.success('Request accepted!')
-        refreshRequests()
-      } else {
-        // For declining, just hide it from this cleaner's view
-        setDeclinedRequests(prev => new Set([...prev, requestId]))
-        notify.success('Request declined')
+
+        // Fetch property data separately
+        if (requests && requests.length > 0) {
+          const propertyIds = [...new Set(requests.map(r => r.property_id).filter(Boolean))]
+          
+          if (propertyIds.length > 0) {
+            const { data: properties, error: propError } = await supabase
+              .from('properties')
+              .select('id, property_name, address, special_instructions')
+              .in('id', propertyIds)
+
+            if (propError) throw propError
+
+            // Combine the data
+            const enrichedData = requests.map(request => ({
+              ...request,
+              properties: properties.find(p => p.id === request.property_id) || null
+            }))
+
+            setData(enrichedData)
+          } else {
+            setData(requests)
+          }
+        } else {
+          setData([])
+        }
+      } else if (table === 'properties') {
+        query = query.eq('landlord_id', userId)
+        const { data, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+        setData(data || [])
+      } else if (table === 'messages') {
+        query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        const { data, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+        setData(data || [])
       }
+
     } catch (error) {
-      console.error('Error updating request:', error)
-      notify.error(action === 'accept' ? 'Failed to accept request' : 'Failed to decline request')
+      console.error(`Error loading ${table}:`, error)
+      setData([])
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleCompleteJob = async (requestId) => {
-    if (!confirm('Mark this cleaning job as completed?')) {
-      return
+  const handleRealtimeUpdate = (payload) => {
+    const { eventType, new: newRecord, old: oldRecord } = payload
+
+    // Only handle updates relevant to this user
+    const isRelevant = () => {
+      if (table === 'properties') {
+        return newRecord?.landlord_id === userId || oldRecord?.landlord_id === userId
+      }
+      if (table === 'cleaning_requests') {
+        return newRecord?.landlord_id === userId || 
+               newRecord?.cleaner_id === userId ||
+               oldRecord?.landlord_id === userId || 
+               oldRecord?.cleaner_id === userId
+      }
+      if (table === 'messages') {
+        return newRecord?.sender_id === userId || 
+               newRecord?.recipient_id === userId ||
+               oldRecord?.sender_id === userId || 
+               oldRecord?.recipient_id === userId
+      }
+      return true
     }
 
-    try {
-      const result = await updateRequest(requestId, { status: 'completed' })
+    if (!isRelevant()) return
+
+    switch (eventType) {
+      case 'INSERT':
+        if (table === 'cleaning_requests') {
+          // For cleaning requests, we need to fetch the property data
+          fetchPropertyForRequest(newRecord)
+        } else {
+          setData(prev => {
+            // Check if record already exists to prevent duplicates
+            const exists = prev.find(item => item.id === newRecord.id)
+            if (exists) return prev
+            
+            return [newRecord, ...prev]
+          })
+        }
+        
+        // Show notifications for relevant events
+        if (table === 'cleaning_requests' && userType === 'cleaner' && newRecord.landlord_id !== userId) {
+          toast.success('🧹 New cleaning request available!')
+        }
+        if (table === 'messages' && newRecord.recipient_id === userId) {
+          toast.success('💬 New message received!')
+        }
+        break
       
-      if (result.success) {
-        notify.success('Job marked as completed!')
-      } else {
-        throw result.error
-      }
-    } catch (error) {
-      console.error('Error completing job:', error)
-      notify.error('Failed to complete job')
+      case 'UPDATE':
+        setData(prev => prev.map(item => 
+          item.id === newRecord.id ? { ...item, ...newRecord } : item
+        ))
+        
+        if (table === 'cleaning_requests') {
+          if (newRecord.status === 'approved' && userType === 'landlord') {
+            toast.success('✅ Cleaning request approved!')
+          }
+          if (newRecord.status === 'declined' && userType === 'landlord') {
+            toast.error('❌ Cleaning request declined')
+          }
+        }
+        break
+      
+      case 'DELETE':
+        setData(prev => prev.filter(item => item.id !== (oldRecord?.id || newRecord?.id)))
+        break
     }
   }
 
-  const submitSupplyReport = async (reportData) => {
+  const fetchPropertyForRequest = async (request) => {
     try {
-      const { data, error } = await supabase
-        .from('supply_reports')
-        .insert([{
-          cleaner_id: user.id,
-          ...reportData
-        }])
-        .select()
+      if (!request.property_id) {
+        // If no property_id, just add the request without property data
+        setData(prev => {
+          const exists = prev.find(item => item.id === request.id)
+          if (exists) return prev
+          return [{ ...request, properties: null }, ...prev]
+        })
+        return
+      }
+
+      const { data: property, error } = await supabase
+        .from('properties')
+        .select('id, property_name, address, special_instructions')
+        .eq('id', request.property_id)
+        .single()
+
+      if (error) {
+        console.error('Error fetching property:', error)
+        // Add request without property data if fetch fails
+        setData(prev => {
+          const exists = prev.find(item => item.id === request.id)
+          if (exists) return prev
+          return [{ ...request, properties: null }, ...prev]
+        })
+        return
+      }
+
+      const enrichedRequest = {
+        ...request,
+        properties: property
+      }
+
+      setData(prev => {
+        const exists = prev.find(item => item.id === request.id)
+        if (exists) return prev
+        return [enrichedRequest, ...prev]
+      })
+    } catch (error) {
+      console.error('Error fetching property for request:', error)
+      // Add request without property data on error
+      setData(prev => {
+        const exists = prev.find(item => item.id === request.id)
+        if (exists) return prev
+        return [{ ...request, properties: null }, ...prev]
+      })
+    }
+  }
+
+  const deleteItem = async (id) => {
+    try {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', id)
 
       if (error) throw error
-
-      notify.success('Supply report submitted!')
-      setShowSupplyReport(false)
+      
+      // Optimistically update the UI
+      setData(prev => prev.filter(item => item.id !== id))
+      
+      return { success: true }
     } catch (error) {
-      console.error('Error submitting supply report:', error)
-      notify.error('Failed to submit report')
+      console.error(`Error deleting ${table} item:`, error)
+      return { success: false, error }
     }
   }
 
-  // Stats calculations - use filtered requests
-  const pendingRequests = filteredRequests.filter(r => r.status === 'pending').length
-  const approvedJobs = filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length
-  const completedJobs = filteredRequests.filter(r => r.status === 'completed' && r.cleaner_id === user.id).length
-  const totalEarnings = filteredRequests
-    .filter(r => r.status === 'completed' && r.cleaner_id === user.id && r.price)
-    .reduce((sum, r) => sum + parseFloat(r.price || 0), 0)
+  const updateItem = async (id, updates) => {
+    try {
+      const { error } = await supabase
+        .from(table)
+        .update(updates)
+        .eq('id', id)
 
-  const stats = {
-    pendingRequests,
-    approvedJobs,
-    completedJobs,
-    totalEarnings: totalEarnings.toFixed(2)
-  }
-
-  const tabs = [
-    { id: 'overview', name: 'Overview', icon: '📊' },
-    { id: 'requests', name: 'New Requests', icon: '📋' },
-    { id: 'schedule', name: 'My Schedule', icon: '📅' },
-    { id: 'messages', name: 'Messages', icon: '💬' },
-    { id: 'supplies', name: 'Supply Reports', icon: '📦' }
-  ]
-
-  return (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-sm p-6 text-white">
-        <h1 className="text-2xl font-bold mb-2">
-          Welcome back, {user.user_metadata?.first_name}! 🧹
-        </h1>
-        <p className="opacity-90">
-          Manage your cleaning requests and coordinate with landlords efficiently.
-        </p>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-yellow-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Pending Requests</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.pendingRequests}</p>
-            </div>
-            <div className="text-2xl">⏳</div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Scheduled Jobs</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.approvedJobs}</p>
-            </div>
-            <div className="text-2xl">📅</div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Completed Jobs</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.completedJobs}</p>
-            </div>
-            <div className="text-2xl">✅</div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-purple-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Earnings</p>
-              <p className="text-2xl font-bold text-gray-900">${stats.totalEarnings}</p>
-            </div>
-            <div className="text-2xl">💰</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="bg-white rounded-lg shadow-sm">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span className="mr-2">{tab.icon}</span>
-                {tab.name}
-                {tab.id === 'requests' && stats.pendingRequests > 0 && (
-                  <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-1">
-                    {stats.pendingRequests}
-                  </span>
-                )}
-                {tab.id === 'messages' && messages.filter(m => !m.read_at && m.recipient_id === user.id).length > 0 && (
-                  <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-1">
-                    {messages.filter(m => !m.read_at && m.recipient_id === user.id).length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Tab Content */}
-        <div className="p-6">
-          {activeTab === 'overview' && <CleanerOverviewTab stats={stats} requests={filteredRequests} />}
-          {activeTab === 'requests' && (
-            <RequestsTab 
-              requests={filteredRequests.filter(r => r.status === 'pending')}
-              onAction={handleRequestAction}
-              loading={requestsLoading}
-            />
-          )}
-          {activeTab === 'schedule' && (
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold">My Schedule</h2>
-
-              {filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length === 0 ? (
-                <div className="text-center py-12 bg-gray-50 rounded-lg">
-                  <div className="text-4xl mb-4">📅</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No scheduled jobs</h3>
-                  <p className="text-gray-600">Accepted jobs will appear in your schedule</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).map((request) => (
-                    <div key={request.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="font-semibold">{request.properties?.property_name}</h3>
-                          <p className="text-gray-600">{request.properties?.address}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{formatDate(request.checkout_date)}</p>
-                          <p className="text-sm text-gray-600">{request.checkout_time || 'Flexible'}</p>
-                        </div>
-                      </div>
-                      {request.price && (
-                        <p className="text-sm text-green-600 mt-2">Agreed Price: ${request.price}</p>
-                      )}
-                      <div className="mt-3 flex space-x-3">
-                        <button className="text-blue-600 hover:underline text-sm">View Details</button>
-                        <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
-                        <button 
-                          onClick={() => handleCompleteJob(request.id)}
-                          className="text-purple-600 hover:underline text-sm"
-                        >
-                          Mark Complete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
-          {activeTab === 'supplies' && (
-            <SuppliesTab 
-              onReportSupplies={() => setShowSupplyReport(true)}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Supply Report Modal */}
-      {showSupplyReport && (
-        <SupplyReportForm
-          user={user}
-          onSubmit={submitSupplyReport}
-          onClose={() => setShowSupplyReport(false)}
-        />
-      )}
-    </div>
-  )
-}
-
-// Cleaner Overview Tab
-function CleanerOverviewTab({ stats, requests }) {
-  const recentActivity = requests.slice(0, 5)
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Dashboard Overview</h2>
+      if (error) throw error
       
-      {/* Recent Activity */}
-      {recentActivity.length > 0 && (
-        <div className="bg-white border rounded-lg">
-          <div className="px-6 py-4 border-b">
-            <h3 className="text-lg font-semibold">Recent Activity</h3>
-          </div>
-          <div className="p-6">
-            <div className="space-y-3">
-              {recentActivity.map((request) => (
-                <div key={request.id} className="flex items-center justify-between py-3 border-b last:border-b-0">
-                  <div>
-                    <p className="font-medium">{request.properties?.property_name || 'Property'}</p>
-                    <p className="text-sm text-gray-600">
-                      Checkout: {formatDate(request.checkout_date)}
-                    </p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                    {request.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// New Requests Tab
-function RequestsTab({ requests, onAction, loading }) {
-  if (loading) {
-    return <div className="text-center py-8">Loading requests...</div>
+      // Optimistically update the UI without requiring SELECT permission
+      setData(prev => prev.map(item => 
+        item.id === id ? { ...item, ...updates } : item
+      ))
+      
+      return { success: true }
+    } catch (error) {
+      console.error(`Error updating ${table} item:`, error)
+      return { success: false, error }
+    }
   }
 
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">New Cleaning Requests</h2>
-
-      {requests.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="text-4xl mb-4">📋</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No new requests</h3>
-          <p className="text-gray-600">New cleaning requests from landlords will appear here</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {requests.map((request) => (
-            <RequestCard 
-              key={request.id} 
-              request={request} 
-              onAction={onAction}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Schedule Tab - Remove this function since we're inlining it above
-
-// Supplies Tab
-function SuppliesTab({ onReportSupplies }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Supply Reports</h2>
-        <button
-          onClick={onReportSupplies}
-          className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
-        >
-          + Report Low Supplies
-        </button>
-      </div>
-
-      <div className="bg-gray-50 rounded-lg p-8 text-center">
-        <div className="text-4xl mb-4">📦</div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Supply Management</h3>
-        <p className="text-gray-600 mb-4">
-          Help landlords stay stocked by reporting when supplies are running low at properties
-        </p>
-        <button
-          onClick={onReportSupplies}
-          className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition-colors"
-        >
-          Report Supplies
-        </button>
-      </div>
-    </div>
-  )
+  return { 
+    data, 
+    loading, 
+    refresh: loadData,
+    deleteItem,
+    updateItem
+  }
 }
