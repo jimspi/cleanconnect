@@ -219,38 +219,7 @@ export default function LandlordDashboard({ user }) {
     </div>
   )
 }
-  {/* ... rest of your tabs stay the same */}
-</div>
-          {activeTab === 'requests' && (
-            <RequestsTab 
-              requests={requests}
-              properties={properties}
-              loading={requestsLoading}
-              onCreateRequest={() => setShowCreateRequest(true)}
-            />
-          )}
-          {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
-          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
-        </div>
-      </div>
-          }
-      {/* Modals */}
-      {showCreateRequest && (
-        <CreateRequestForm
-          user={user}
-          properties={properties}
-          selectedProperty={selectedProperty}
-          onSubmit={createCleaningRequest}
-          onClose={() => {
-            setShowCreateRequest(false)
-            setSelectedProperty(null)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
+ 
 // Overview Tab Component
 function OverviewTab({ stats, properties, requests }) {
   const recentRequests = requests.slice(0, 5)
