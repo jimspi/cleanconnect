@@ -51,39 +51,48 @@ export function useRealtime(table, userId, userType) {
       let query = supabase.from(table).select('*')
 
       if (table === 'cleaning_requests') {
-        query = query.select(`
-          *,
-          properties(property_name, address, special_instructions),
-          landlord:landlord_id(email, raw_user_meta_data)
-        `)
-
+        // Load cleaning requests with properties data
         if (userType === 'landlord') {
           query = query.eq('landlord_id', userId)
         } else {
           query = query.or(`cleaner_id.is.null,cleaner_id.eq.${userId}`)
         }
+        
+        const { data: requests, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+
+        // Fetch property data separately
+        if (requests && requests.length > 0) {
+          const propertyIds = [...new Set(requests.map(r => r.property_id))]
+          const { data: properties, error: propError } = await supabase
+            .from('properties')
+            .select('id, property_name, address, special_instructions')
+            .in('id', propertyIds)
+
+          if (propError) throw propError
+
+          // Combine the data
+          const enrichedData = requests.map(request => ({
+            ...request,
+            properties: properties.find(p => p.id === request.property_id)
+          }))
+
+          setData(enrichedData)
+        } else {
+          setData([])
+        }
       } else if (table === 'properties') {
         query = query.eq('landlord_id', userId)
+        const { data, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+        setData(data || [])
       } else if (table === 'messages') {
-        query = query
-          .select(`
-            *,
-            sender:sender_id(email, raw_user_meta_data),
-            recipient:recipient_id(email, raw_user_meta_data)
-          `)
-          .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        const { data, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+        setData(data || [])
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false })
-
-      if (error) throw error
-      
-      // Remove duplicates based on ID
-      const uniqueData = data ? data.filter((item, index, self) => 
-        index === self.findIndex(t => t.id === item.id)
-      ) : []
-      
-      setData(uniqueData)
     } catch (error) {
       console.error(`Error loading ${table}:`, error)
       setData([])
@@ -113,13 +122,18 @@ export function useRealtime(table, userId, userType) {
 
     switch (eventType) {
       case 'INSERT':
-        setData(prev => {
-          // Check if record already exists to prevent duplicates
-          const exists = prev.find(item => item.id === newRecord.id)
-          if (exists) return prev
-          
-          return [newRecord, ...prev]
-        })
+        if (table === 'cleaning_requests') {
+          // For cleaning requests, we need to fetch the property data
+          fetchPropertyForRequest(newRecord)
+        } else {
+          setData(prev => {
+            // Check if record already exists to prevent duplicates
+            const exists = prev.find(item => item.id === newRecord.id)
+            if (exists) return prev
+            
+            return [newRecord, ...prev]
+          })
+        }
         
         // Show notifications for relevant events
         if (table === 'cleaning_requests' && userType === 'cleaner' && newRecord.landlord_id !== userId) {
@@ -151,9 +165,126 @@ export function useRealtime(table, userId, userType) {
     }
   }
 
+  const fetchPropertyForRequest = async (request) => {
+    try {
+      const { data: property, error } = await supabase
+        .from('properties')
+        .select('id, property_name, address, special_instructions')
+        .eq('id', request.property_id)
+        .single()
+
+      if (error) throw error
+
+      const enrichedRequest = {
+        ...request,
+        properties: property
+      }
+
+      setData(prev => {
+        const exists = prev.find(item => item.id === request.id)
+        if (exists) return prev
+        return [enrichedRequest, ...prev]
+      })
+    } catch (error) {
+      console.error('Error fetching property for request:', error)
+    }
+  }
+
   const deleteItem = async (id) => {
     try {
       const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      
+      // Optimistically update the UI
+      setData(prev => prev.filter(item => item.id !== id))
+      
+      return { success: true }
+    } catch (error) {
+      console.error(`Error deleting ${table} item:`, error)
+      return { success: false, error }
+    }
+  }
+
+  const updateItem = async (id, updates) => {
+    try {
+      const { data: updatedData, error } = await supabase
+        .from(table)
+        .update(updates)
+        .eq('id', id)
+        .select()
+
+      if (error) throw error
+      
+      // Optimistically update the UI
+      setData(prev => prev.map(item => 
+        item.id === id ? { ...item, ...updates } : item
+      ))
+      
+      return { success: true, data: updatedData }
+    } catch (error) {
+      console.error(`Error updating ${table} item:`, error)
+      return { success: false, error }
+    }
+  }
+
+  return { 
+    data, 
+    loading, 
+    refresh: loadData,
+    deleteItem,
+    updateItem
+  }
+} await supabase
+        .from(table)
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      
+      // Optimistically update the UI
+      setData(prev => prev.filter(item => item.id !== id))
+      
+      return { success: true }
+    } catch (error) {
+      console.error(`Error deleting ${table} item:`, error)
+      return { success: false, error }
+    }
+  }
+
+  const updateItem = async (id, updates) => {
+    try {
+      const { data: updatedData, error } = await supabase
+        .from(table)
+        .update(updates)
+        .eq('id', id)
+        .select()
+
+      if (error) throw error
+      
+      // Optimistically update the UI
+      setData(prev => prev.map(item => 
+        item.id === id ? { ...item, ...updates } : item
+      ))
+      
+      return { success: true, data: updatedData }
+    } catch (error) {
+      console.error(`Error updating ${table} item:`, error)
+      return { success: false, error }
+    }
+  }
+
+  return { 
+    data, 
+    loading, 
+    refresh: loadData,
+    deleteItem,
+    updateItem
+  }
+} await supabase
         .from(table)
         .delete()
         .eq('id', id)
