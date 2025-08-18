@@ -327,4 +327,256 @@ function PropertiesTab({ properties, showAddProperty, setShowAddProperty, addPro
   )
 }
 
+// Add Property Form Component
+function AddPropertyForm({ onSubmit, onCancel }) {
+  const [formData, setFormData] = useState({
+    property_name: '',
+    address: '',
+    special_instructions: '',
+    supply_list: {
+      coffee_pods: false,
+      shampoo: false,
+      paper_products: false,
+      detergent: false,
+      dishwasher_pods: false,
+      cleaning_supplies: false,
+      toilet_paper: false,
+      paper_towels: false,
+      trash_bags: false,
+      hand_soap: false
+    }
+  })
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSubmit(formData)
+  }
+
+  const handleSupplyChange = (supply) => {
+    setFormData({
+      ...formData,
+      supply_list: {
+        ...formData.supply_list,
+        [supply]: !formData.supply_list[supply]
+      }
+    })
+  }
+
+  const supplies = [
+    { key: 'coffee_pods', label: 'Coffee Pods' },
+    { key: 'shampoo', label: 'Shampoo/Toiletries' },
+    { key: 'paper_products', label: 'Paper Products' },
+    { key: 'detergent', label: 'Laundry Detergent' },
+    { key: 'dishwasher_pods', label: 'Dishwasher Pods' },
+    { key: 'cleaning_supplies', label: 'Cleaning Supplies' },
+    { key: 'toilet_paper', label: 'Toilet Paper' },
+    { key: 'paper_towels', label: 'Paper Towels' },
+    { key: 'trash_bags', label: 'Trash Bags' },
+    { key: 'hand_soap', label: 'Hand Soap' }
+  ]
+
+  return (
+    <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
+      <h3 className="text-lg font-semibold mb-4">Add New Property</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Property Name *
+          </label>
+          <input
+            type="text"
+            value={formData.property_name}
+            onChange={(e) => setFormData({...formData, property_name: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g., Downtown Apartment #1, Beach House, etc."
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Full Address *
+          </label>
+          <input
+            type="text"
+            value={formData.address}
+            onChange={(e) => setFormData({...formData, address: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="123 Main Street, City, State 12345"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Special Cleaning Instructions
+          </label>
+          <textarea
+            value={formData.special_instructions}
+            onChange={(e) => setFormData({...formData, special_instructions: e.target.value})}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows="3"
+            placeholder="Any special instructions for cleaners (pet hair, delicate items, etc.)"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Supplies to Track & Monitor
+          </label>
+          <p className="text-xs text-gray-500 mb-3">Select supplies you want cleaners to monitor and report when running low</p>
+          <div className="grid grid-cols-2 gap-2">
+            {supplies.map((supply) => (
+              <label key={supply.key} className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={formData.supply_list[supply.key]}
+                  onChange={() => handleSupplyChange(supply.key)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm">{supply.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex space-x-3 pt-4">
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Add Property
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// Requests Tab Component
+function RequestsTab({ requests, properties, loading, onCreateRequest }) {
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const filteredRequests = requests.filter(request => 
+    statusFilter === 'all' || request.status === statusFilter
+  )
+
+  if (loading) {
+    return <div className="text-center py-8">Loading requests...</div>
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Cleaning Requests</h2>
+        <button
+          onClick={onCreateRequest}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+        >
+          + New Request
+        </button>
+      </div>
+
+      {/* Status Filter */}
+      <div className="flex space-x-2">
+        {['all', 'pending', 'approved', 'completed'].map(status => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              statusFilter === status
+                ? 'bg-blue-100 text-blue-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {status !== 'all' && (
+              <span className="ml-1">({requests.filter(r => r.status === status).length})</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {filteredRequests.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <div className="text-4xl mb-4">🧹</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {statusFilter === 'all' ? 'No cleaning requests yet' : `No ${statusFilter} requests`}
+          </h3>
+          <p className="text-gray-600 mb-4">
+            {properties.length === 0 
+              ? 'Add a property first, then create your first cleaning request'
+              : 'Create your first cleaning request for a property'
+            }
+          </p>
+          <button
+            onClick={onCreateRequest}
+            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Create Cleaning Request
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredRequests.map((request) => (
+            <div key={request.id} className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {request.properties?.property_name || 'Property'}
+                  </h3>
+                  <p className="text-gray-600">{request.properties?.address}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                  {request.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    <strong>Checkout:</strong> {formatDate(request.checkout_date)} at {formatTime(request.checkout_time)}
+                  </p>
+                  {request.checkin_date && (
+                    <p className="text-sm text-gray-600">
+                      <strong>Next Checkin:</strong> {formatDate(request.checkin_date)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">
+                    <strong>Created:</strong> {formatDate(request.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              {request.special_notes && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm"><strong>Special Notes:</strong> {request.special_notes}</p>
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button className="text-blue-600 hover:underline text-sm">View Details</button>
+                {request.status === 'approved' && (
+                  <button className="text-green-600 hover:underline text-sm">Message Cleaner</button>
+                )}
+                {request.status === 'pending' && (
+                  <button className="text-red-600 hover:underline text-sm">Cancel Request</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 // Continue with remaining components in next file...
