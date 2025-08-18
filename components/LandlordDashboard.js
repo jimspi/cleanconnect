@@ -167,29 +167,58 @@ export default function LandlordDashboard({ user }) {
 
         {/* Tab Content */}
         <div className="p-6">
-  {activeTab === 'overview' && (
-    <OverviewTab 
-      stats={stats} 
-      properties={properties} 
-      requests={requests}
-      onTabChange={setActiveTab}
-      onCreateRequest={() => setShowCreateRequest(true)}
-      onAddProperty={() => setShowAddProperty(true)}
-    />
-  )}
-  {activeTab === 'properties' && (
-    <PropertiesTab 
-      properties={properties} 
-      showAddProperty={showAddProperty}
-      setShowAddProperty={setShowAddProperty}
-      addProperty={addProperty}
-      loading={propertiesLoading}
-      onRequestCleaning={(property) => {
-        setSelectedProperty(property)
-        setShowCreateRequest(true)
-      }}
-    />
-  )}
+          {activeTab === 'overview' && (
+            <OverviewTab 
+              stats={stats} 
+              properties={properties} 
+              requests={requests}
+              onTabChange={setActiveTab}
+              onCreateRequest={() => setShowCreateRequest(true)}
+              onAddProperty={() => setShowAddProperty(true)}
+            />
+          )}
+          {activeTab === 'properties' && (
+            <PropertiesTab 
+              properties={properties} 
+              showAddProperty={showAddProperty}
+              setShowAddProperty={setShowAddProperty}
+              addProperty={addProperty}
+              loading={propertiesLoading}
+              onRequestCleaning={(property) => {
+                setSelectedProperty(property)
+                setShowCreateRequest(true)
+              }}
+            />
+          )}
+          {activeTab === 'requests' && (
+            <RequestsTab 
+              requests={requests}
+              properties={properties}
+              loading={requestsLoading}
+              onCreateRequest={() => setShowCreateRequest(true)}
+            />
+          )}
+          {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
+          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
+        </div>
+      </div>
+
+      {/* Modals */}
+      {showCreateRequest && (
+        <CreateRequestForm
+          user={user}
+          properties={properties}
+          selectedProperty={selectedProperty}
+          onSubmit={createCleaningRequest}
+          onClose={() => {
+            setShowCreateRequest(false)
+            setSelectedProperty(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
   {/* ... rest of your tabs stay the same */}
 </div>
           {activeTab === 'requests' && (
