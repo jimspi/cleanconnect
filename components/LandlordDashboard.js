@@ -167,20 +167,31 @@ export default function LandlordDashboard({ user }) {
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === 'overview' && <OverviewTab stats={stats} properties={properties} requests={requests} />}
-          {activeTab === 'properties' && (
-            <PropertiesTab 
-              properties={properties} 
-              showAddProperty={showAddProperty}
-              setShowAddProperty={setShowAddProperty}
-              addProperty={addProperty}
-              loading={propertiesLoading}
-              onRequestCleaning={(property) => {
-                setSelectedProperty(property)
-                setShowCreateRequest(true)
-              }}
-            />
-          )}
+  {activeTab === 'overview' && (
+    <OverviewTab 
+      stats={stats} 
+      properties={properties} 
+      requests={requests}
+      onTabChange={setActiveTab}
+      onCreateRequest={() => setShowCreateRequest(true)}
+      onAddProperty={() => setShowAddProperty(true)}
+    />
+  )}
+  {activeTab === 'properties' && (
+    <PropertiesTab 
+      properties={properties} 
+      showAddProperty={showAddProperty}
+      setShowAddProperty={setShowAddProperty}
+      addProperty={addProperty}
+      loading={propertiesLoading}
+      onRequestCleaning={(property) => {
+        setSelectedProperty(property)
+        setShowCreateRequest(true)
+      }}
+    />
+  )}
+  {/* ... rest of your tabs stay the same */}
+</div>
           {activeTab === 'requests' && (
             <RequestsTab 
               requests={requests}
