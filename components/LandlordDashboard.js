@@ -565,4 +565,86 @@ function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelR
 
       {filteredRequests.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="
+          <div className="text-4xl mb-4">🧹</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {statusFilter === 'all' ? 'No cleaning requests yet' : `No ${statusFilter} requests`}
+          </h3>
+          <p className="text-gray-600 mb-4">
+            {properties.length === 0 
+              ? 'Add a property first, then create your first cleaning request'
+              : 'Create your first cleaning request for a property'
+            }
+          </p>
+          <button
+            onClick={onCreateRequest}
+            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Create Cleaning Request
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredRequests.map((request) => (
+            <div key={request.id} className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {request.properties?.property_name || 'Property'}
+                  </h3>
+                  <p className="text-gray-600">{request.properties?.address}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                  {request.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    <strong>Checkout:</strong> {formatDate(request.checkout_date)} at {formatTime(request.checkout_time)}
+                  </p>
+                  {request.checkin_date && (
+                    <p className="text-sm text-gray-600">
+                      <strong>Next Checkin:</strong> {formatDate(request.checkin_date)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">
+                    <strong>Created:</strong> {formatDate(request.created_at)}
+                  </p>
+                  {request.price && (
+                    <p className="text-sm text-green-600">
+                      <strong>Agreed Price:</strong> ${request.price}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {request.special_notes && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm"><strong>Special Notes:</strong> {request.special_notes}</p>
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button className="text-blue-600 hover:underline text-sm">View Details</button>
+                {request.status === 'approved' && (
+                  <button className="text-green-600 hover:underline text-sm">Message Cleaner</button>
+                )}
+                {(request.status === 'pending' || request.status === 'approved') && (
+                  <button 
+                    onClick={() => onCancelRequest(request.id)}
+                    className="text-red-600 hover:underline text-sm"
+                  >
+                    Cancel Request
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
