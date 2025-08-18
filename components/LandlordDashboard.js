@@ -204,7 +204,7 @@ export default function LandlordDashboard({ user }) {
           {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
         </div>
       </div>
-
+          }
       {/* Modals */}
       {showCreateRequest && (
         <CreateRequestForm
