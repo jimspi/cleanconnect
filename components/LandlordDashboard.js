@@ -11,6 +11,7 @@ export default function LandlordDashboard({ user }) {
   const [showCreateRequest, setShowCreateRequest] = useState(false)
   const [showAddProperty, setShowAddProperty] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState(null)
+  const [messageRecipientId, setMessageRecipientId] = useState(null)
 
   // Real-time data with improved hooks
   const { data: properties, loading: propertiesLoading, refresh: refreshProperties, deleteItem: deleteProperty } = useRealtime('properties', user.id, 'landlord')
@@ -116,6 +117,11 @@ export default function LandlordDashboard({ user }) {
       console.error('Error cancelling request:', error)
       notify.error('Failed to cancel request')
     }
+  }
+
+  const handleMessageCleaner = (cleanerId) => {
+    setMessageRecipientId(cleanerId)
+    setActiveTab('messages')
   }
 
   const tabs = [
@@ -240,10 +246,11 @@ export default function LandlordDashboard({ user }) {
               loading={requestsLoading}
               onCreateRequest={() => setShowCreateRequest(true)}
               onCancelRequest={handleCancelRequest}
+              onMessageCleaner={handleMessageCleaner}
             />
           )}
           {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
-          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
+          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} preselectedRecipient={messageRecipientId} />}
         </div>
       </div>
 
@@ -272,22 +279,6 @@ function OverviewTab({ stats, properties, requests }) {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Dashboard Overview</h2>
       
-      {/* Quick Actions */}
-      <div className="bg-blue-50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-blue-800 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="bg-blue-600 text-white p-4 rounded-lg hover:bg-blue-700 transition-colors">
-            🏠 Manage Properties
-          </button>
-          <button className="bg-green-600 text-white p-4 rounded-lg hover:bg-green-700 transition-colors">
-            🧹 Create Request
-          </button>
-          <button className="bg-purple-600 text-white p-4 rounded-lg hover:bg-purple-700 transition-colors">
-            📅 View Calendar
-          </button>
-        </div>
-      </div>
-
       {/* Recent Activity */}
       {recentRequests.length > 0 && (
         <div className="bg-white border rounded-lg">
@@ -520,7 +511,7 @@ function AddPropertyForm({ onSubmit, onCancel }) {
 }
 
 // Requests Tab Component
-function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelRequest }) {
+function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelRequest, onMessageCleaner }) {
   const [statusFilter, setStatusFilter] = useState('all')
 
   const filteredRequests = requests.filter(request => 
@@ -629,8 +620,13 @@ function RequestsTab({ requests, properties, loading, onCreateRequest, onCancelR
 
               <div className="flex space-x-3">
                 <button className="text-blue-600 hover:underline text-sm">View Details</button>
-                {request.status === 'approved' && (
-                  <button className="text-green-600 hover:underline text-sm">Message Cleaner</button>
+                {request.status === 'approved' && request.cleaner_id && (
+                  <button 
+                    onClick={() => onMessageCleaner(request.cleaner_id)}
+                    className="text-green-600 hover:underline text-sm"
+                  >
+                    Message Cleaner
+                  </button>
                 )}
                 {(request.status === 'pending' || request.status === 'approved') && (
                   <button 
