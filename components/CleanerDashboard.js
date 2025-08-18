@@ -36,9 +36,11 @@ export default function CleanerDashboard({ user }) {
         notify.success('Request accepted!')
         refreshRequests()
       } else {
-        // For declining, just hide it from this cleaner's view
+        // For declining, we'll use a simple approach:
+        // After a request is 24 hours old and still pending, consider it expired
+        // For now, just hide it locally and let the landlord manage expired requests
         setDeclinedRequests(prev => new Set([...prev, requestId]))
-        notify.success('Request declined')
+        notify.success('Request declined - hidden from your view')
       }
     } catch (error) {
       console.error('Error updating request:', error)
