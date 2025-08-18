@@ -48,10 +48,11 @@ export function useRealtime(table, userId, userType) {
   const loadData = async () => {
     try {
       setLoading(true)
-      let query = supabase.from(table).select('*')
 
       if (table === 'cleaning_requests') {
-        // Load cleaning requests with properties data
+        // Load cleaning requests first
+        let query = supabase.from(table).select('*')
+        
         if (userType === 'landlord') {
           query = query.eq('landlord_id', userId)
         } else {
@@ -62,38 +63,59 @@ export function useRealtime(table, userId, userType) {
         const { data: requests, error } = await query.order('created_at', { ascending: false })
         if (error) throw error
 
-        // Fetch property data separately
+        // Fetch ALL property data and landlord data separately to ensure we have complete info
         if (requests && requests.length > 0) {
           const propertyIds = [...new Set(requests.map(r => r.property_id).filter(Boolean))]
+          const landlordIds = [...new Set(requests.map(r => r.landlord_id).filter(Boolean))]
           
+          let properties = []
+          let landlords = []
+
+          // Fetch properties
           if (propertyIds.length > 0) {
-            const { data: properties, error: propError } = await supabase
+            const { data: propData, error: propError } = await supabase
               .from('properties')
-              .select('id, property_name, address, special_instructions')
+              .select('id, property_name, address, special_instructions, supply_list')
               .in('id', propertyIds)
 
-            if (propError) throw propError
-
-            // Combine the data
-            const enrichedData = requests.map(request => ({
-              ...request,
-              properties: properties.find(p => p.id === request.property_id) || null
-            }))
-
-            setData(enrichedData)
-          } else {
-            setData(requests)
+            if (propError) {
+              console.error('Error fetching properties:', propError)
+            } else {
+              properties = propData || []
+            }
           }
+
+          // For cleaners, also fetch landlord info for display
+          if (userType === 'cleaner' && landlordIds.length > 0) {
+            // We'll skip landlord fetching for now since auth.users access is limited
+            // The landlord info will be handled differently
+          }
+
+          // Combine the data with proper error handling
+          const enrichedData = requests.map(request => {
+            const property = properties.find(p => p.id === request.property_id)
+            
+            return {
+              ...request,
+              properties: property || {
+                property_name: 'Unknown Property',
+                address: 'Address not available',
+                special_instructions: null
+              }
+            }
+          })
+
+          setData(enrichedData)
         } else {
           setData([])
         }
       } else if (table === 'properties') {
-        query = query.eq('landlord_id', userId)
+        const query = supabase.from(table).select('*').eq('landlord_id', userId)
         const { data, error } = await query.order('created_at', { ascending: false })
         if (error) throw error
         setData(data || [])
       } else if (table === 'messages') {
-        query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        const query = supabase.from(table).select('*').or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
         const { data, error } = await query.order('created_at', { ascending: false })
         if (error) throw error
         setData(data || [])
@@ -180,35 +202,35 @@ export function useRealtime(table, userId, userType) {
   const fetchPropertyForRequest = async (request) => {
     try {
       if (!request.property_id) {
-        // If no property_id, just add the request without property data
+        // If no property_id, add the request with placeholder data
         setData(prev => {
           const exists = prev.find(item => item.id === request.id)
           if (exists) return prev
-          return [{ ...request, properties: null }, ...prev]
+          return [{
+            ...request, 
+            properties: {
+              property_name: 'Unknown Property',
+              address: 'Address not available',
+              special_instructions: null
+            }
+          }, ...prev]
         })
         return
       }
 
       const { data: property, error } = await supabase
         .from('properties')
-        .select('id, property_name, address, special_instructions')
+        .select('id, property_name, address, special_instructions, supply_list')
         .eq('id', request.property_id)
         .single()
 
-      if (error) {
-        console.error('Error fetching property:', error)
-        // Add request without property data if fetch fails
-        setData(prev => {
-          const exists = prev.find(item => item.id === request.id)
-          if (exists) return prev
-          return [{ ...request, properties: null }, ...prev]
-        })
-        return
-      }
-
       const enrichedRequest = {
         ...request,
-        properties: property
+        properties: property || {
+          property_name: 'Unknown Property',
+          address: 'Address not available', 
+          special_instructions: null
+        }
       }
 
       setData(prev => {
@@ -216,13 +238,24 @@ export function useRealtime(table, userId, userType) {
         if (exists) return prev
         return [enrichedRequest, ...prev]
       })
+
+      if (error) {
+        console.error('Error fetching property:', error)
+      }
     } catch (error) {
       console.error('Error fetching property for request:', error)
-      // Add request without property data on error
+      // Add request with placeholder data on error
       setData(prev => {
         const exists = prev.find(item => item.id === request.id)
         if (exists) return prev
-        return [{ ...request, properties: null }, ...prev]
+        return [{
+          ...request,
+          properties: {
+            property_name: 'Property (Error Loading Details)',
+            address: 'Unable to load address',
+            special_instructions: null
+          }
+        }, ...prev]
       })
     }
   }
