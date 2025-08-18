@@ -10,27 +10,39 @@ import { notify, formatDate, getStatusColor } from '../utils/notifications'
 export default function CleanerDashboard({ user }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [showSupplyReport, setShowSupplyReport] = useState(false)
+  const [declinedRequests, setDeclinedRequests] = useState(new Set())
 
   // Real-time data with improved hooks
   const { data: requests, loading: requestsLoading, refresh: refreshRequests, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'cleaner')
   const { data: messages, loading: messagesLoading } = useRealtime('messages', user.id, 'cleaner')
 
+  // Filter out declined requests from the UI
+  const filteredRequests = requests.filter(request => !declinedRequests.has(request.id))
+
   const handleRequestAction = async (requestId, action, price = null) => {
     try {
-      const updates = action === 'accept' 
-        ? { cleaner_id: user.id, status: 'approved', price: price }
-        : { status: 'declined' }
+      if (action === 'accept') {
+        // For accepting, assign cleaner and update status
+        const { error } = await supabase
+          .from('cleaning_requests')
+          .update({ 
+            cleaner_id: user.id, 
+            status: 'approved', 
+            price: price 
+          })
+          .eq('id', requestId)
 
-      const result = await updateRequest(requestId, updates)
-      
-      if (result.success) {
-        notify.success(action === 'accept' ? 'Request accepted!' : 'Request declined')
+        if (error) throw error
+        notify.success('Request accepted!')
+        refreshRequests()
       } else {
-        throw result.error
+        // For declining, just hide it from this cleaner's view
+        setDeclinedRequests(prev => new Set([...prev, requestId]))
+        notify.success('Request declined')
       }
     } catch (error) {
       console.error('Error updating request:', error)
-      notify.error('Failed to update request')
+      notify.error(action === 'accept' ? 'Failed to accept request' : 'Failed to decline request')
     }
   }
 
@@ -73,11 +85,11 @@ export default function CleanerDashboard({ user }) {
     }
   }
 
-  // Stats calculations
-  const pendingRequests = requests.filter(r => r.status === 'pending').length
-  const approvedJobs = requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length
-  const completedJobs = requests.filter(r => r.status === 'completed' && r.cleaner_id === user.id).length
-  const totalEarnings = requests
+  // Stats calculations - use filtered requests
+  const pendingRequests = filteredRequests.filter(r => r.status === 'pending').length
+  const approvedJobs = filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length
+  const completedJobs = filteredRequests.filter(r => r.status === 'completed' && r.cleaner_id === user.id).length
+  const totalEarnings = filteredRequests
     .filter(r => r.status === 'completed' && r.cleaner_id === user.id && r.price)
     .reduce((sum, r) => sum + parseFloat(r.price || 0), 0)
 
@@ -184,10 +196,10 @@ export default function CleanerDashboard({ user }) {
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === 'overview' && <CleanerOverviewTab stats={stats} requests={requests} />}
+          {activeTab === 'overview' && <CleanerOverviewTab stats={stats} requests={filteredRequests} />}
           {activeTab === 'requests' && (
             <RequestsTab 
-              requests={requests.filter(r => r.status === 'pending')}
+              requests={filteredRequests.filter(r => r.status === 'pending')}
               onAction={handleRequestAction}
               loading={requestsLoading}
             />
@@ -196,7 +208,7 @@ export default function CleanerDashboard({ user }) {
             <div className="space-y-6">
               <h2 className="text-xl font-semibold">My Schedule</h2>
 
-              {requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length === 0 ? (
+              {filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 rounded-lg">
                   <div className="text-4xl mb-4">📅</div>
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No scheduled jobs</h3>
@@ -204,7 +216,7 @@ export default function CleanerDashboard({ user }) {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).map((request) => (
+                  {filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).map((request) => (
                     <div key={request.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
                       <div className="flex justify-between items-center">
                         <div>
@@ -223,7 +235,7 @@ export default function CleanerDashboard({ user }) {
                         <button className="text-blue-600 hover:underline text-sm">View Details</button>
                         <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
                         <button 
-                          onClick={() => onCompleteJob(request.id)}
+                          onClick={() => handleCompleteJob(request.id)}
                           className="text-purple-600 hover:underline text-sm"
                         >
                           Mark Complete
