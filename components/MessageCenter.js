@@ -6,6 +6,8 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [showNewConversation, setShowNewConversation] = useState(false)
+  const [newRecipientEmail, setNewRecipientEmail] = useState('')
   const messagesEndRef = useRef(null)
 
   // Handle preselected recipient
@@ -82,6 +84,26 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
     }
   }
 
+  const startNewConversation = async (e) => {
+    e.preventDefault()
+    if (!newRecipientEmail.trim() || sending) return
+
+    setSending(true)
+    try {
+      // For now, we'll use the email as a temporary ID and let the user send a message
+      // The real user ID will be resolved when they send the first message
+      setSelectedConversation(newRecipientEmail.trim())
+      setShowNewConversation(false)
+      setNewRecipientEmail('')
+      notify.success('You can now send a message to this user')
+    } catch (error) {
+      console.error('Error starting conversation:', error)
+      notify.error('Failed to start conversation')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const markAsRead = async (messageId) => {
     try {
       await supabase
@@ -100,7 +122,43 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Messages</h2>
+        <button
+          onClick={() => setShowNewConversation(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          + New Message
+        </button>
       </div>
+      
+      {showNewConversation && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-medium mb-3">Start New Conversation</h3>
+          <form onSubmit={startNewConversation} className="flex space-x-3">
+            <input
+              type="email"
+              value={newRecipientEmail}
+              onChange={(e) => setNewRecipientEmail(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter email address..."
+              required
+            />
+            <button
+              type="submit"
+              disabled={sending}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNewConversation(false)}
+              className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
       
       <div className="bg-white border rounded-lg overflow-hidden" style={{ height: '600px' }}>
         <div className="flex h-full">
