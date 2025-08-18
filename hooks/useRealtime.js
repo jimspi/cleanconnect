@@ -14,7 +14,7 @@ export function useRealtime(table, userId, userType) {
 
     // Set up real-time subscription
     const channel = supabase
-      .channel(`${table}_changes`)
+      .channel(`${table}_changes_${userId}`)
       .on(
         'postgres_changes',
         {
@@ -70,10 +70,30 @@ export function useRealtime(table, userId, userType) {
   const handleRealtimeUpdate = (payload) => {
     const { eventType, new: newRecord, old: oldRecord } = payload
 
+    // Only handle updates relevant to this user
+    const isRelevant = () => {
+      if (table === 'properties') return newRecord?.landlord_id === userId
+      if (table === 'cleaning_requests') {
+        return newRecord?.landlord_id === userId || newRecord?.cleaner_id === userId
+      }
+      if (table === 'messages') {
+        return newRecord?.sender_id === userId || newRecord?.recipient_id === userId
+      }
+      return true
+    }
+
+    if (!isRelevant()) return
+
     switch (eventType) {
       case 'INSERT':
-        setData(prev => [newRecord, ...prev])
-        if (table === 'cleaning_requests' && userType === 'cleaner') {
+        // Prevent duplicates
+        setData(prev => {
+          const exists = prev.find(item => item.id === newRecord.id)
+          if (exists) return prev
+          return [newRecord, ...prev]
+        })
+        
+        if (table === 'cleaning_requests' && userType === 'cleaner' && newRecord.landlord_id !== userId) {
           toast.success('🧹 New cleaning request available!')
         }
         if (table === 'messages' && newRecord.recipient_id === userId) {
@@ -83,8 +103,9 @@ export function useRealtime(table, userId, userType) {
       
       case 'UPDATE':
         setData(prev => prev.map(item => 
-          item.id === newRecord.id ? newRecord : item
+          item.id === newRecord.id ? { ...item, ...newRecord } : item
         ))
+        
         if (table === 'cleaning_requests') {
           if (newRecord.status === 'approved' && userType === 'landlord') {
             toast.success('✅ Cleaning request approved!')
