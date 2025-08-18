@@ -193,10 +193,47 @@ export default function CleanerDashboard({ user }) {
             />
           )}
           {activeTab === 'schedule' && (
-            <ScheduleTab 
-              requests={requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id)}
-              onCompleteJob={handleCompleteJob}
-            />
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold">My Schedule</h2>
+
+              {requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-lg">
+                  <div className="text-4xl mb-4">📅</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No scheduled jobs</h3>
+                  <p className="text-gray-600">Accepted jobs will appear in your schedule</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {requests.filter(r => r.status === 'approved' && r.cleaner_id === user.id).map((request) => (
+                    <div key={request.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className="font-semibold">{request.properties?.property_name}</h3>
+                          <p className="text-gray-600">{request.properties?.address}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium">{formatDate(request.checkout_date)}</p>
+                          <p className="text-sm text-gray-600">{request.checkout_time || 'Flexible'}</p>
+                        </div>
+                      </div>
+                      {request.price && (
+                        <p className="text-sm text-green-600 mt-2">Agreed Price: ${request.price}</p>
+                      )}
+                      <div className="mt-3 flex space-x-3">
+                        <button className="text-blue-600 hover:underline text-sm">View Details</button>
+                        <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
+                        <button 
+                          onClick={() => onCompleteJob(request.id)}
+                          className="text-purple-600 hover:underline text-sm"
+                        >
+                          Mark Complete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
           {activeTab === 'supplies' && (
@@ -287,52 +324,7 @@ function RequestsTab({ requests, onAction, loading }) {
   )
 }
 
-// Schedule Tab
-function ScheduleTab({ requests, onCompleteJob }) {
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">My Schedule</h2>
-
-      {requests.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="text-4xl mb-4">📅</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No scheduled jobs</h3>
-          <p className="text-gray-600">Accepted jobs will appear in your schedule</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {requests.map((request) => (
-            <div key={request.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-semibold">{request.properties?.property_name}</h3>
-                  <p className="text-gray-600">{request.properties?.address}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium">{formatDate(request.checkout_date)}</p>
-                  <p className="text-sm text-gray-600">{request.checkout_time || 'Flexible'}</p>
-                </div>
-              </div>
-              {request.price && (
-                <p className="text-sm text-green-600 mt-2">Agreed Price: ${request.price}</p>
-              )}
-              <div className="mt-3 flex space-x-3">
-                <button className="text-blue-600 hover:underline text-sm">View Details</button>
-                <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
-                <button 
-                  onClick={() => onCompleteJob(request.id)}
-                  className="text-purple-600 hover:underline text-sm"
-                >
-                  Mark Complete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// Schedule Tab - Remove this function since we're inlining it above
 
 // Supplies Tab
 function SuppliesTab({ onReportSupplies }) {
