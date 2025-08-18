@@ -247,20 +247,19 @@ export function useRealtime(table, userId, userType) {
 
   const updateItem = async (id, updates) => {
     try {
-      const { data: updatedData, error } = await supabase
+      const { error } = await supabase
         .from(table)
         .update(updates)
         .eq('id', id)
-        .select()
 
       if (error) throw error
       
-      // Optimistically update the UI
+      // Optimistically update the UI without requiring SELECT permission
       setData(prev => prev.map(item => 
         item.id === id ? { ...item, ...updates } : item
       ))
       
-      return { success: true, data: updatedData }
+      return { success: true }
     } catch (error) {
       console.error(`Error updating ${table} item:`, error)
       return { success: false, error }
