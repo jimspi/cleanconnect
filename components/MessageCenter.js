@@ -2,11 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { notify, formatDateTime } from '../utils/notifications'
 
-export default function MessageCenter({ user, messages }) {
+export default function MessageCenter({ user, messages, preselectedRecipient }) {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef(null)
+
+  // Handle preselected recipient
+  useEffect(() => {
+    if (preselectedRecipient) {
+      setSelectedConversation(preselectedRecipient)
+    }
+  }, [preselectedRecipient])
 
   // Simple conversation grouping by sender/recipient
   const conversations = messages.reduce((acc, message) => {
