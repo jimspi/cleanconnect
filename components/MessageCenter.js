@@ -1,3 +1,4 @@
+// Replace the entire MessageCenter component with this fixed version:
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { notify, formatDateTime } from '../utils/notifications'
@@ -6,6 +7,8 @@ export default function MessageCenter({ user, messages }) {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [showNewConversation, setShowNewConversation] = useState(false)
+  const [newRecipientEmail, setNewRecipientEmail] = useState('')
   const messagesEndRef = useRef(null)
 
   // Group messages by conversation
@@ -76,6 +79,37 @@ export default function MessageCenter({ user, messages }) {
     }
   }
 
+  const startNewConversation = async (e) => {
+    e.preventDefault()
+    if (!newRecipientEmail.trim() || sending) return
+
+    setSending(true)
+    try {
+      // Find user by email
+      const { data: users, error: userError } = await supabase
+        .from('auth.users')
+        .select('id, email')
+        .eq('email', newRecipientEmail.trim())
+        .limit(1)
+
+      if (userError || !users.length) {
+        notify.error('User not found with that email')
+        setSending(false)
+        return
+      }
+
+      const recipientId = users[0].id
+      setSelectedConversation(recipientId)
+      setShowNewConversation(false)
+      setNewRecipientEmail('')
+    } catch (error) {
+      console.error('Error finding user:', error)
+      notify.error('Failed to find user')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const markAsRead = async (messageId) => {
     try {
       await supabase
@@ -92,7 +126,45 @@ export default function MessageCenter({ user, messages }) {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Messages</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Messages</h2>
+        <button
+          onClick={() => setShowNewConversation(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          + New Message
+        </button>
+      </div>
+      
+      {showNewConversation && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-medium mb-3">Start New Conversation</h3>
+          <form onSubmit={startNewConversation} className="flex space-x-3">
+            <input
+              type="email"
+              value={newRecipientEmail}
+              onChange={(e) => setNewRecipientEmail(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter email address..."
+              required
+            />
+            <button
+              type="submit"
+              disabled={sending}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNewConversation(false)}
+              className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
       
       <div className="bg-white border rounded-lg overflow-hidden" style={{ height: '600px' }}>
         <div className="flex h-full">
@@ -106,7 +178,7 @@ export default function MessageCenter({ user, messages }) {
                 <div className="p-4 text-center text-gray-500">
                   <div className="text-3xl mb-2">💬</div>
                   <p>No conversations yet</p>
-                  <p className="text-sm">Messages will appear here</p>
+                  <p className="text-sm">Start a new conversation above</p>
                 </div>
               ) : (
                 sortedConversations.map(([userId, conversation]) => {
