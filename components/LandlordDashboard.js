@@ -17,6 +17,54 @@ export default function LandlordDashboard({ user }) {
   const { data: properties, loading: propertiesLoading, refresh: refreshProperties, deleteItem: deleteProperty } = useRealtime('properties', user.id, 'landlord')
   const { data: requests, loading: requestsLoading, refresh: refreshRequests, deleteItem: deleteRequest, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'landlord')
   const { data: messages, loading: messagesLoading } = useRealtime('messages', user.id, 'landlord')
+  
+  // Add supply reports data
+  const [supplyReports, setSupplyReports] = useState([])
+  const [supplyReportsLoading, setSupplyReportsLoading] = useState(true)
+
+  // Load supply reports
+  useEffect(() => {
+    loadSupplyReports()
+  }, [user.id])
+
+  const loadSupplyReports = async () => {
+    try {
+      setSupplyReportsLoading(true)
+      const { data, error } = await supabase
+        .from('supply_reports')
+        .select(`
+          *,
+          properties(property_name, address)
+        `)
+        .eq('landlord_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setSupplyReports(data || [])
+    } catch (error) {
+      console.error('Error loading supply reports:', error)
+      setSupplyReports([])
+    } finally {
+      setSupplyReportsLoading(false)
+    }
+  }
+
+  const markSupplyReportResolved = async (reportId) => {
+    try {
+      const { error } = await supabase
+        .from('supply_reports')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('id', reportId)
+
+      if (error) throw error
+      
+      notify.success('Supply report marked as resolved!')
+      loadSupplyReports()
+    } catch (error) {
+      console.error('Error updating supply report:', error)
+      notify.error('Failed to update supply report')
+    }
+  }
 
   // Stats calculations
   const stats = {
@@ -142,6 +190,7 @@ export default function LandlordDashboard({ user }) {
     { id: 'overview', name: 'Overview', icon: '📊' },
     { id: 'properties', name: 'Properties', icon: '🏠' },
     { id: 'requests', name: 'Cleaning Requests', icon: '🧹' },
+    { id: 'supplies', name: 'Supply Reports', icon: '📦' },
     { id: 'calendar', name: 'Calendar', icon: '📅' },
     { id: 'messages', name: 'Messages', icon: '💬' }
   ]
@@ -222,6 +271,11 @@ export default function LandlordDashboard({ user }) {
                     {messages.filter(m => !m.read_at && m.recipient_id === user.id).length}
                   </span>
                 )}
+                {tab.id === 'supplies' && supplyReports.filter(r => r.status !== 'resolved').length > 0 && (
+                  <span className="ml-2 bg-orange-500 text-white text-xs rounded-full px-2 py-1">
+                    {supplyReports.filter(r => r.status !== 'resolved').length}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -234,6 +288,7 @@ export default function LandlordDashboard({ user }) {
               stats={stats} 
               properties={properties} 
               requests={requests}
+              supplyReports={supplyReports}
               onTabChange={setActiveTab}
               onCreateRequest={() => setShowCreateRequest(true)}
               onAddProperty={() => setShowAddProperty(true)}
@@ -263,6 +318,14 @@ export default function LandlordDashboard({ user }) {
               onMessageCleaner={handleMessageCleaner}
             />
           )}
+          {activeTab === 'supplies' && (
+            <SupplyReportsTab 
+              reports={supplyReports}
+              loading={supplyReportsLoading}
+              onMarkResolved={markSupplyReportResolved}
+              onRefresh={loadSupplyReports}
+            />
+          )}
           {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
           {activeTab === 'messages' && <MessageCenter user={user} messages={messages} preselectedRecipient={messageRecipientId} />}
         </div>
@@ -284,14 +347,179 @@ export default function LandlordDashboard({ user }) {
     </div>
   )
 }
+
+// Supply Reports Tab Component
+function SupplyReportsTab({ reports, loading, onMarkResolved, onRefresh }) {
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const filteredReports = reports.filter(report => 
+    statusFilter === 'all' || 
+    (statusFilter === 'pending' && report.status !== 'resolved') ||
+    (statusFilter === 'resolved' && report.status === 'resolved')
+  )
+
+  const getUrgencyColor = (urgency) => {
+    const colors = {
+      low: 'bg-green-100 text-green-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      high: 'bg-red-100 text-red-800'
+    }
+    return colors[urgency] || 'bg-gray-100 text-gray-800'
+  }
+
+  if (loading) {
+    return <div className="text-center py-8">Loading supply reports...</div>
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Supply Reports</h2>
+        <button
+          onClick={onRefresh}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          🔄 Refresh
+        </button>
+      </div>
+
+      {/* Status Filter */}
+      <div className="flex space-x-2">
+        {['all', 'pending', 'resolved'].map(status => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              statusFilter === status
+                ? 'bg-orange-100 text-orange-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {status !== 'all' && (
+              <span className="ml-1">
+                ({status === 'pending' 
+                  ? reports.filter(r => r.status !== 'resolved').length
+                  : reports.filter(r => r.status === 'resolved').length
+                })
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {filteredReports.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <div className="text-4xl mb-4">📦</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {statusFilter === 'all' ? 'No supply reports yet' : `No ${statusFilter} supply reports`}
+          </h3>
+          <p className="text-gray-600">
+            Supply reports from cleaners will appear here when they notice supplies running low
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredReports.map((report) => (
+            <div key={report.id} className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {report.properties?.property_name || 'Property'}
+                  </h3>
+                  <p className="text-gray-600">{report.properties?.address}</p>
+                </div>
+                <div className="flex space-x-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getUrgencyColor(report.urgency)}`}>
+                    {report.urgency} priority
+                  </span>
+                  {report.status !== 'resolved' && (
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                      Pending
+                    </span>
+                  )}
+                  {report.status === 'resolved' && (
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Resolved
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <h4 className="font-medium text-gray-800 mb-2">Supplies Needed:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {report.supplies_needed?.map((supply, index) => (
+                    <span key={index} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">
+                      {supply}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {report.notes && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm">
+                    <strong>Additional Notes:</strong> {report.notes}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-sm text-gray-600">
+                <span>Reported: {formatDate(report.created_at)}</span>
+                {report.status === 'resolved' && report.resolved_at && (
+                  <span>Resolved: {formatDate(report.resolved_at)}</span>
+                )}
+              </div>
+
+              {report.status !== 'resolved' && (
+                <div className="mt-4 flex space-x-3">
+                  <button
+                    onClick={() => onMarkResolved(report.id)}
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors"
+                  >
+                    Mark as Resolved
+                  </button>
+                  <button className="text-blue-600 hover:underline text-sm">
+                    Message Cleaner
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
  
 // Overview Tab Component
-function OverviewTab({ stats, properties, requests }) {
+function OverviewTab({ stats, properties, requests, supplyReports }) {
   const recentRequests = requests.slice(0, 5)
+  const urgentSupplyReports = supplyReports.filter(r => r.urgency === 'high' && r.status !== 'resolved').slice(0, 3)
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Dashboard Overview</h2>
+      
+      {/* Urgent Supply Reports Alert */}
+      {urgentSupplyReports.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-orange-800 mb-2">🚨 Urgent Supply Reports</h3>
+          <div className="space-y-2">
+            {urgentSupplyReports.map((report) => (
+              <div key={report.id} className="flex justify-between items-center">
+                <span className="text-orange-700">
+                  {report.properties?.property_name} - {report.supplies_needed?.join(', ')}
+                </span>
+                <span className="text-xs text-orange-600">
+                  {formatDate(report.created_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Recent Activity */}
       {recentRequests.length > 0 && (
