@@ -6,11 +6,9 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
-  const [showNewConversation, setShowNewConversation] = useState(false)
-  const [newRecipientEmail, setNewRecipientEmail] = useState('')
   const messagesEndRef = useRef(null)
 
-  // Handle preselected recipient
+  // Handle preselected recipient (this comes from "Message Cleaner" button)
   useEffect(() => {
     if (preselectedRecipient) {
       setSelectedConversation(preselectedRecipient)
@@ -68,37 +66,20 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
         .from('messages')
         .insert([{
           sender_id: user.id,
-          recipient_id: selectedConversation,
+          recipient_id: selectedConversation, // This must be a UUID, not an email
           message_text: newMessage.trim()
         }])
 
-      if (error) throw error
+      if (error) {
+        console.error('Message insert error:', error)
+        throw error
+      }
 
       setNewMessage('')
       notify.success('Message sent!')
     } catch (error) {
       console.error('Error sending message:', error)
-      notify.error('Failed to send message')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const startNewConversation = async (e) => {
-    e.preventDefault()
-    if (!newRecipientEmail.trim() || sending) return
-
-    setSending(true)
-    try {
-      // For now, we'll use the email as a temporary ID and let the user send a message
-      // The real user ID will be resolved when they send the first message
-      setSelectedConversation(newRecipientEmail.trim())
-      setShowNewConversation(false)
-      setNewRecipientEmail('')
-      notify.success('You can now send a message to this user')
-    } catch (error) {
-      console.error('Error starting conversation:', error)
-      notify.error('Failed to start conversation')
+      notify.error(`Failed to send message: ${error.message}`)
     } finally {
       setSending(false)
     }
@@ -122,43 +103,10 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Messages</h2>
-        <button
-          onClick={() => setShowNewConversation(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          + New Message
-        </button>
-      </div>
-      
-      {showNewConversation && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-medium mb-3">Start New Conversation</h3>
-          <form onSubmit={startNewConversation} className="flex space-x-3">
-            <input
-              type="email"
-              value={newRecipientEmail}
-              onChange={(e) => setNewRecipientEmail(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter email address..."
-              required
-            />
-            <button
-              type="submit"
-              disabled={sending}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              Start
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNewConversation(false)}
-              className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-            >
-              Cancel
-            </button>
-          </form>
+        <div className="text-sm text-gray-500">
+          Use "Message Cleaner" buttons from cleaning requests to start conversations
         </div>
-      )}
+      </div>
       
       <div className="bg-white border rounded-lg overflow-hidden" style={{ height: '600px' }}>
         <div className="flex h-full">
@@ -172,7 +120,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                 <div className="p-4 text-center text-gray-500">
                   <div className="text-3xl mb-2">💬</div>
                   <p>No conversations yet</p>
-                  <p className="text-sm">Messages will appear here when you communicate with landlords/cleaners</p>
+                  <p className="text-sm">Use "Message Cleaner" buttons from cleaning requests to start messaging</p>
                 </div>
               ) : (
                 sortedConversations.map(([userId, conversation]) => (
@@ -278,6 +226,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                 <div className="text-center">
                   <div className="text-4xl mb-4">💬</div>
                   <p>Select a conversation to start messaging</p>
+                  <p className="text-sm mt-2">Use "Message Cleaner" from cleaning requests to start new conversations</p>
                 </div>
               </div>
             )}
