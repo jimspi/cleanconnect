@@ -8,7 +8,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef(null)
 
-  // Handle preselected recipient (this comes from "Message Cleaner" button)
+  // Handle preselected recipient (this comes from "Message Cleaner/Landlord" button)
   useEffect(() => {
     if (preselectedRecipient) {
       setSelectedConversation(preselectedRecipient)
@@ -43,9 +43,24 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
     return acc
   }, {})
 
-  // Sort conversations by last message time
+  // If we have a preselected recipient that's not in conversations yet, add it
+  if (preselectedRecipient && !conversations[preselectedRecipient]) {
+    conversations[preselectedRecipient] = {
+      userId: preselectedRecipient,
+      messages: [],
+      lastMessage: null,
+      unreadCount: 0
+    }
+  }
+
+  // Sort conversations by last message time (put new conversations at top)
   const sortedConversations = Object.entries(conversations).sort(
-    ([, a], [, b]) => new Date(b.lastMessage.created_at) - new Date(a.lastMessage.created_at)
+    ([, a], [, b]) => {
+      if (!a.lastMessage && !b.lastMessage) return 0
+      if (!a.lastMessage) return -1
+      if (!b.lastMessage) return 1
+      return new Date(b.lastMessage.created_at) - new Date(a.lastMessage.created_at)
+    }
   )
 
   const scrollToBottom = () => {
@@ -66,7 +81,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
         .from('messages')
         .insert([{
           sender_id: user.id,
-          recipient_id: selectedConversation, // This must be a UUID, not an email
+          recipient_id: selectedConversation,
           message_text: newMessage.trim()
         }])
 
@@ -104,7 +119,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Messages</h2>
         <div className="text-sm text-gray-500">
-          Use "Message Cleaner" buttons from cleaning requests to start conversations
+          Use "Message Cleaner/Landlord" buttons to start conversations
         </div>
       </div>
       
@@ -120,7 +135,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                 <div className="p-4 text-center text-gray-500">
                   <div className="text-3xl mb-2">💬</div>
                   <p>No conversations yet</p>
-                  <p className="text-sm">Use "Message Cleaner" buttons from cleaning requests to start messaging</p>
+                  <p className="text-sm">Use "Message Cleaner/Landlord" buttons from cleaning requests to start messaging</p>
                 </div>
               ) : (
                 sortedConversations.map(([userId, conversation]) => (
@@ -140,16 +155,24 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">
-                          User {userId.slice(0, 8)}...
+                          {user.user_metadata?.user_type === 'landlord' ? 'Cleaner' : 'Landlord'} {userId.slice(0, 8)}...
                         </p>
-                        <p className="text-sm text-gray-600 truncate">
-                          {conversation.lastMessage.message_text}
-                        </p>
+                        {conversation.lastMessage ? (
+                          <p className="text-sm text-gray-600 truncate">
+                            {conversation.lastMessage.message_text}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-400 italic">
+                            New conversation
+                          </p>
+                        )}
                       </div>
                       <div className="ml-2 flex flex-col items-end">
-                        <p className="text-xs text-gray-500">
-                          {formatDateTime(conversation.lastMessage.created_at).split(' ')[1]}
-                        </p>
+                        {conversation.lastMessage && (
+                          <p className="text-xs text-gray-500">
+                            {formatDateTime(conversation.lastMessage.created_at).split(' ')[1]}
+                          </p>
+                        )}
                         {conversation.unreadCount > 0 && (
                           <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 mt-1">
                             {conversation.unreadCount}
@@ -170,33 +193,43 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                 {/* Messages Header */}
                 <div className="p-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="font-semibold text-gray-800">
-                    Conversation with User {selectedConversation.slice(0, 8)}...
+                    Conversation with {user.user_metadata?.user_type === 'landlord' ? 'Cleaner' : 'Landlord'} {selectedConversation.slice(0, 8)}...
                   </h3>
                 </div>
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
-                  {selectedMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.sender_id === user.id ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          message.sender_id === user.id
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-200 text-gray-800'
-                        }`}
-                      >
-                        <p>{message.message_text}</p>
-                        <p className={`text-xs mt-1 ${
-                          message.sender_id === user.id ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
-                          {formatDateTime(message.created_at)}
-                        </p>
+                  {selectedMessages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                      <div className="text-center">
+                        <div className="text-4xl mb-4">💬</div>
+                        <p>Start the conversation!</p>
+                        <p className="text-sm mt-2">Send a message below to begin chatting</p>
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    selectedMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.sender_id === user.id ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                            message.sender_id === user.id
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-200 text-gray-800'
+                          }`}
+                        >
+                          <p>{message.message_text}</p>
+                          <p className={`text-xs mt-1 ${
+                            message.sender_id === user.id ? 'text-blue-100' : 'text-gray-500'
+                          }`}>
+                            {formatDateTime(message.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                   <div ref={messagesEndRef} />
                 </div>
 
@@ -226,7 +259,7 @@ export default function MessageCenter({ user, messages, preselectedRecipient }) 
                 <div className="text-center">
                   <div className="text-4xl mb-4">💬</div>
                   <p>Select a conversation to start messaging</p>
-                  <p className="text-sm mt-2">Use "Message Cleaner" from cleaning requests to start new conversations</p>
+                  <p className="text-sm mt-2">Use "Message Cleaner/Landlord" from cleaning requests to start new conversations</p>
                 </div>
               </div>
             )}
