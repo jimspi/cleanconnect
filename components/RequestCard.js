@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { formatDate, formatTime } from '../utils/notifications'
 
-export default function RequestCard({ request, onAction }) {
+export default function RequestCard({ request, onAction, onMessageLandlord }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showPriceForm, setShowPriceForm] = useState(false)
   const [price, setPrice] = useState('')
@@ -18,6 +18,12 @@ export default function RequestCard({ request, onAction }) {
 
   const handleDecline = () => {
     onAction(request.id, 'decline')
+  }
+
+  const handleMessageLandlord = () => {
+    if (onMessageLandlord && request.landlord_id) {
+      onMessageLandlord(request.landlord_id)
+    }
   }
 
   return (
@@ -108,12 +114,22 @@ export default function RequestCard({ request, onAction }) {
       )}
 
       <div className="flex justify-between items-center">
-        <button
-          onClick={() => setShowDetails(!showDetails)}
-          className="text-blue-600 hover:underline text-sm"
-        >
-          {showDetails ? 'Hide Details' : 'View Details'}
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-blue-600 hover:underline text-sm"
+          >
+            {showDetails ? 'Hide Details' : 'View Details'}
+          </button>
+          {onMessageLandlord && request.landlord_id && (
+            <button
+              onClick={handleMessageLandlord}
+              className="text-purple-600 hover:underline text-sm"
+            >
+              Message Landlord
+            </button>
+          )}
+        </div>
         <div className="space-x-3">
           <button
             onClick={handleDecline}
