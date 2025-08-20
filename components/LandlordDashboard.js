@@ -326,7 +326,12 @@ export default function LandlordDashboard({ user }) {
               onRefresh={loadSupplyReports}
             />
           )}
-          {activeTab === 'calendar' && <Calendar events={requests} userType="landlord" />}
+          {activeTab === 'calendar' && (
+            <Calendar 
+              events={requests.filter(r => r.status !== 'cancelled' && r.status !== 'declined')} 
+              userType="landlord" 
+            />
+          )}
           {activeTab === 'messages' && <MessageCenter user={user} messages={messages} preselectedRecipient={messageRecipientId} />}
         </div>
       </div>
