@@ -11,6 +11,7 @@ export default function CleanerDashboard({ user }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [showSupplyReport, setShowSupplyReport] = useState(false)
   const [declinedRequests, setDeclinedRequests] = useState(new Set())
+  const [messageRecipientId, setMessageRecipientId] = useState(null)
 
   // Real-time data with improved hooks
   const { data: requests, loading: requestsLoading, refresh: refreshRequests, updateItem: updateRequest } = useRealtime('cleaning_requests', user.id, 'cleaner')
@@ -70,6 +71,11 @@ export default function CleanerDashboard({ user }) {
       console.error('Error completing job:', error)
       notify.error('Failed to complete job')
     }
+  }
+
+  const handleMessageLandlord = (landlordId) => {
+    setMessageRecipientId(landlordId)
+    setActiveTab('messages')
   }
 
   const submitSupplyReport = async (reportData) => {
@@ -208,6 +214,7 @@ export default function CleanerDashboard({ user }) {
             <RequestsTab 
               requests={filteredRequests.filter(r => r.status === 'pending')}
               onAction={handleRequestAction}
+              onMessageLandlord={handleMessageLandlord}
               loading={requestsLoading}
             />
           )}
@@ -253,7 +260,12 @@ export default function CleanerDashboard({ user }) {
                           )}
                           <div className="mt-3 flex space-x-3">
                             <button className="text-blue-600 hover:underline text-sm">View Details</button>
-                            <button className="text-green-600 hover:underline text-sm">Message Landlord</button>
+                            <button 
+                              onClick={() => handleMessageLandlord(request.landlord_id)}
+                              className="text-green-600 hover:underline text-sm"
+                            >
+                              Message Landlord
+                            </button>
                             <button 
                               onClick={() => handleCompleteJob(request.id)}
                               className="text-purple-600 hover:underline text-sm"
@@ -269,7 +281,7 @@ export default function CleanerDashboard({ user }) {
               )}
             </div>
           )}
-          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} />}
+          {activeTab === 'messages' && <MessageCenter user={user} messages={messages} preselectedRecipient={messageRecipientId} />}
           {activeTab === 'supplies' && (
             <SuppliesTab 
               onReportSupplies={() => setShowSupplyReport(true)}
@@ -328,7 +340,7 @@ function CleanerOverviewTab({ stats, requests }) {
 }
 
 // New Requests Tab
-function RequestsTab({ requests, onAction, loading }) {
+function RequestsTab({ requests, onAction, onMessageLandlord, loading }) {
   if (loading) {
     return <div className="text-center py-8">Loading requests...</div>
   }
@@ -350,6 +362,7 @@ function RequestsTab({ requests, onAction, loading }) {
               key={request.id} 
               request={request} 
               onAction={onAction}
+              onMessageLandlord={onMessageLandlord}
             />
           ))}
         </div>
