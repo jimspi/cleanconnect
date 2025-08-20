@@ -225,7 +225,10 @@ export default function CleanerDashboard({ user }) {
                 <>
                   {/* Calendar View */}
                   <Calendar 
-                    events={filteredRequests.filter(r => r.status === 'approved' && r.cleaner_id === user.id)} 
+                    events={filteredRequests.filter(r => 
+                      (r.status === 'approved' || r.status === 'completed') && 
+                      r.cleaner_id === user.id
+                    )} 
                     userType="cleaner" 
                   />
 
